@@ -1,0 +1,16 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "Nova AI 模块"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "Nova AI"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "Nova AI"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "Nova AI 模块"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "Nova AI"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "Nova AI"
+    },
+    {
+      "name": "mic_reason",
+      "value": "用于语音输入，把你的话转成文字发送"
+    }
+  ]
+}

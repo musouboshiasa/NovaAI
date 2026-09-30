@@ -1,0 +1,7 @@
+{
+  "modelVersion": "6.1.1",
+  "name": "novaai",
+  "version": "1.0.0",
+  "description": "Nova AI - HarmonyOS AI client",
+  "dependencies": {}
+}

@@ -1,0 +1,27 @@
+# ---- build output ----
+/build/
+/entry/build/
+/entry/.preview/
+/.hvigor/
+/.cxx/
+/oh_modules/
+/entry/oh_modules/
+/node_modules/
+
+# ---- IDE ----
+/.idea/
+*.iml
+
+# ---- local / per-machine ----
+# Signing material and SDK paths must never be committed.
+local.properties
+*.p12
+*.cer
+*.p7b
+*.csr
+*.keystore
+build-profile.local.json5
+
+# ---- OS ----
+.DS_Store
+Thumbs.db

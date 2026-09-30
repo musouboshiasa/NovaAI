@@ -1,0 +1,10 @@
+﻿{
+  "app": {
+    "bundleName": "com.novaai.app",
+    "vendor": "novaai",
+    "versionCode": 310101,
+    "versionName": "31-1-1",
+    "icon": "$media:app_icon",
+    "label": "$string:app_name"
+  }
+}
