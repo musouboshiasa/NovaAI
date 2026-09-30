@@ -5,7 +5,11 @@
 export class Constants {
   static readonly APP_NAME_ZH: string = '星枢 AI';
   static readonly APP_NAME_EN: string = 'Nova AI';
-  static readonly VERSION: string = '31-1-1';
+  static readonly VERSION: string = '32-2-1';
+  /** 开源仓库地址 */
+  static readonly GITHUB_URL: string = 'https://github.com/musouboshiasa/NovaAI';
+  /** 开源协议名称 */
+  static readonly LICENSE_NAME: string = 'MIT License';
   static readonly LOG_TAG: string = 'NovaAI';
 
   /** 默认系统提示词 */

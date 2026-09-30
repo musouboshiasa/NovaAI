@@ -75,6 +75,8 @@ export struct SettingsPage {
   @Prop searchTesting: boolean = false;
   @Prop searchTest: SearchTestResult[] = [];
   onTestSearch: () => void = () => {};
+  /** 用系统浏览器打开链接（关于页的仓库地址等） */
+  onOpenLink: (url: string) => void = () => {};
 
   private pal(): Palette {
     return Themes.of(this.dark);
@@ -860,10 +862,48 @@ export struct SettingsPage {
         this.infoRow('运行平台', 'HarmonyOS 6.1.1 (API 24)');
         this.infoRow('支持协议', 'Chat Completions · Responses · Anthropic Messages · FIM');
         this.infoRow('支持服务商', 'DeepSeek · OpenAI · 任意兼容端点');
-        Text('本应用直接与模型服务商通信，不经过任何中间服务器，API Key 仅保存在本机应用沙箱内。')
+        // 开源标记
+        Row({ space: 6 }) {
+          Image($r('app.media.ic_shield')).width(13).height(13).fillColor(this.pal().success)
+          Text(Constants.LICENSE_NAME + ' · 开源')
+            .fontSize(Font.xs)
+            .fontColor(this.pal().success)
+            .layoutWeight(1)
+        }
+        .width('100%')
+        .padding({ top: 6 })
+
+        Text('本应用以 ' + Constants.LICENSE_NAME + ' 协议开源，可自由使用、修改与分发。')
+          .fontSize(Font.xs)
+          .fontColor(this.pal().textTertiary)
+          .width('100%')
+
+        // 仓库地址（可点击）
+        Row({ space: 6 }) {
+          Image($r('app.media.ic_globe')).width(13).height(13).fillColor(this.pal().accent)
+          Text(Constants.GITHUB_URL)
+            .fontSize(Font.xs)
+            .fontColor(this.pal().accent)
+            .layoutWeight(1)
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+          Image($r('app.media.ic_export')).width(12).height(12).fillColor(this.pal().accent)
+        }
+        .width('100%')
+        .padding({ top: 2, bottom: 2 })
+        .onClick(() => this.onOpenLink(Constants.GITHUB_URL))
+
+        Text('本应用由 DeepSeek 生成；对话能力默认由 DeepSeek 提供。')
           .fontSize(Font.xs)
           .fontColor(this.pal().textTertiary)
           .margin({ top: 6 })
+          .width('100%')
+
+        Text('本应用直接与模型服务商通信，不经过任何中间服务器，API Key 仅保存在本机应用沙箱内。')
+          .fontSize(Font.xs)
+          .fontColor(this.pal().textTertiary)
+          .margin({ top: 2 })
+          .width('100%')
       }
       .width('100%')
       }

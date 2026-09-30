@@ -1246,7 +1246,8 @@ struct Index {
               searchTest: this.searchTest,
               onTestSearch: () => {
                 this.runSearchTest();
-              }
+              },
+              onOpenLink: (u: string) => this.openLink(u)
             })
               .layoutWeight(1)
           } else if (this.route === 'fim') {
