@@ -132,15 +132,22 @@ export class ChatEngine {
   /**
    * 本地执行一批工具调用
    */
-  static executeTools(calls: ToolCall[]): ToolCall[] {
+  /** 串行执行工具调用（含联网抓取，因此是异步的） */
+  static async executeTools(calls: ToolCall[]): Promise<ToolCall[]> {
     const out: ToolCall[] = [];
     for (let i = 0; i < calls.length; i++) {
       const c: ToolCall = new ToolCall();
       c.id = calls[i].id;
       c.name = calls[i].name;
       c.arguments = calls[i].arguments;
-      c.result = Tools.execute(c.name, c.arguments);
-      c.status = 'done';
+      try {
+        c.result = await Tools.execute(c.name, c.arguments);
+        c.status = 'done';
+      } catch (e) {
+        const err: Error = e as Error;
+        c.result = '{"error":"' + err.message.replace(/"/g, '\\"') + '"}';
+        c.status = 'error';
+      }
       out.push(c);
     }
     return out;

@@ -6,9 +6,11 @@ import { Constants } from '../common/Constants';
 /**
  * 联网搜索
  *
- * 三个后端都**不需要 API Key**：
- *  - bing        : cn.bing.com 的 RSS 输出（format=rss），返回干净 XML，最稳
- *  - duckduckgo  : lite.duckduckgo.com 的极简 HTML（部分网络不可达）
+ * 四个后端：
+ *  - deepseek    : DeepSeek 官方搜索 API（/v1/tools/search），需要 API Key，
+ *                  质量最高、带相关性分数与权威度；配了 Key 时自动优先使用
+ *  - bing        : cn.bing.com 的 RSS 输出（format=rss），返回干净 XML，最稳，无需 Key
+ *  - duckduckgo  : lite.duckduckgo.com 的极简 HTML（部分网络不可达），无需 Key
  *  - searxng     : 任意自建/公共 SearXNG 实例的 JSON 接口
  *
  * 搜索结果会被拼成一段带编号的上下文注入 system prompt，
@@ -141,11 +143,17 @@ export class SearchService {
     c.endpoint = cfg.endpoint;
     c.maxResults = cfg.maxResults;
     c.region = cfg.region;
+    // 凭据必须一起带上，否则 DeepSeek 后端会因「未配置 API Key」静默失败
+    c.apiKey = cfg.apiKey;
+    c.baseUrl = cfg.baseUrl;
     return c;
   }
 
   /** 分发到具体后端实现 */
   private static async invoke(cfg: SearchConfig, backend: string, q: string): Promise<SearchResult[]> {
+    if (backend === 'deepseek') {
+      return await SearchService.deepseek(cfg, q);
+    }
     if (backend === 'duckduckgo') {
       return await SearchService.duckDuckGo(cfg, q);
     }
@@ -166,15 +174,18 @@ export class SearchService {
    * 一次成功就会把它排到前面。
    */
   static rankedOrder(cfg: SearchConfig): string[] {
-    const all: string[] = ['bing', 'duckduckgo', 'searxng'];
+    const all: string[] = ['deepseek', 'bing', 'duckduckgo', 'searxng'];
     const usable: string[] = [];
     const unknown: string[] = [];
     const cooling: string[] = [];
     const now: number = Date.now();
     for (let i = 0; i < all.length; i++) {
       const b: string = all[i];
-      // SearXNG 未配置地址直接排除
+      // SearXNG 未配置地址、DeepSeek 未配置 Key 时直接排除
       if (b === 'searxng' && cfg.endpoint.trim().length === 0) {
+        continue;
+      }
+      if (b === 'deepseek' && cfg.apiKey.trim().length === 0) {
         continue;
       }
       const h: BackendHealth = SearchService.healthOf(b);
@@ -204,6 +215,13 @@ export class SearchService {
         Logger.info('search: ' + explicit + ' 处于失败冷却中，改用自动择优');
       }
     }
+    // 自动模式下，配了 Key 就把 DeepSeek 官方搜索放在最前：
+    // 它由官方搜索引擎提供，质量与稳定性都高于 HTML 抓取，
+    // 不该因为「还没测过」而被排到已知可用的免密钥后端之后。
+    if (explicit === 'auto' && cfg.apiKey.trim().length > 0
+      && now >= SearchService.healthOf('deepseek').cooldownUntil) {
+      out.push('deepseek');
+    }
     const rest: string[] = usable.concat(unknown).concat(cooling);
     for (let i = 0; i < rest.length; i++) {
       if (out.indexOf(rest[i]) < 0) {
@@ -226,22 +244,22 @@ export class SearchService {
     cfg.endpoint = base.endpoint;
     cfg.maxResults = base.maxResults;
     cfg.region = base.region;
+    cfg.apiKey = base.apiKey;
+    cfg.baseUrl = base.baseUrl;
 
     if (backend === 'searxng' && cfg.endpoint.trim().length === 0) {
       r.skipped = true;
       r.error = '未配置实例地址';
       return r;
     }
+    if (backend === 'deepseek' && cfg.apiKey.trim().length === 0) {
+      r.skipped = true;
+      r.error = '未配置 API Key';
+      return r;
+    }
     const t0: number = Date.now();
     try {
-      let list: SearchResult[] = [];
-      if (backend === 'duckduckgo') {
-        list = await SearchService.duckDuckGo(cfg, query);
-      } else if (backend === 'searxng') {
-        list = await SearchService.searxng(cfg, query);
-      } else {
-        list = await SearchService.bing(cfg, query);
-      }
+      const list: SearchResult[] = await SearchService.invoke(cfg, backend, query);
       r.ms = Date.now() - t0;
       r.ok = list.length > 0;
       r.count = list.length;
@@ -266,7 +284,7 @@ export class SearchService {
 
   /** 依次测试全部后端（串行，避免并发请求被搜索引擎限流） */
   static async testAll(cfg: SearchConfig, query: string): Promise<SearchTestResult[]> {
-    const backends: string[] = ['bing', 'duckduckgo', 'searxng'];
+    const backends: string[] = ['deepseek', 'bing', 'duckduckgo', 'searxng'];
     const out: SearchTestResult[] = [];
     for (let i = 0; i < backends.length; i++) {
       const r: SearchTestResult = await SearchService.testBackend(cfg, backends[i], query);
@@ -287,6 +305,9 @@ export class SearchService {
     if (b === 'searxng') {
       return 'SearXNG';
     }
+    if (b === 'deepseek') {
+      return 'DeepSeek';
+    }
     return 'Bing';
   }
 
@@ -299,6 +320,83 @@ export class SearchService {
       return 'ja-JP';
     }
     return 'zh-CN';
+  }
+
+  /* --------------------- DeepSeek 官方搜索 API --------------------- */
+
+  /** 从 Record 里安全取字符串（null / undefined 都归一为空串） */
+  private static pick(o: Record<string, Object>, key: string): string {
+    const v: Object | undefined = o[key];
+    if (v === undefined || v === null) {
+      return '';
+    }
+    return String(v);
+  }
+
+  private static pickNum(o: Record<string, Object>, key: string, def: number): number {
+    const v: Object | undefined = o[key];
+    if (v === undefined || v === null) {
+      return def;
+    }
+    const n: number = Number(v);
+    return Number.isNaN(n) ? def : n;
+  }
+
+  /**
+   * DeepSeek 官方搜索：POST /v1/tools/search
+   * 计费 $0.75 / 1000 次成功请求。
+   * 返回结果自带 rerank_score 与 authority，质量远高于 HTML 抓取。
+   */
+  private static async deepseek(cfg: SearchConfig, q: string): Promise<SearchResult[]> {
+    if (cfg.apiKey.trim().length === 0) {
+      throw new Error('未配置 API Key');
+    }
+    const base: string = (cfg.baseUrl.length > 0 ? cfg.baseUrl : 'https://api.deepseek.com')
+      .replace(/\/+$/, '');
+    const url: string = base + '/v1/tools/search';
+
+    const payload: Record<string, Object> = {};
+    payload['query'] = q.length > 128 ? q.substring(0, 128) : q;
+    payload['count'] = Math.max(1, Math.min(50, cfg.maxResults));
+    // 短摘要用于界面展示即可，正文不必回传，省带宽也省钱
+    payload['need_content'] = false;
+
+    const headers: HeaderMap = {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + cfg.apiKey
+    };
+
+    const raw: string = await HttpClient.postJson(url, headers, JSON.stringify(payload));
+    const obj: Record<string, Object> = JSON.parse(raw) as Record<string, Object>;
+    const arr: Object[] | undefined = obj['results'] as Object[];
+    const out: SearchResult[] = [];
+    if (arr === undefined || arr === null) {
+      return out;
+    }
+    for (let i = 0; i < arr.length; i++) {
+      const o: Record<string, Object> = arr[i] as Record<string, Object>;
+      const r: SearchResult = new SearchResult();
+      r.title = SearchService.pick(o, 'title');
+      r.url = SearchService.pick(o, 'url');
+      r.summary = SearchService.pick(o, 'summary');
+      r.snippet = SearchService.pick(o, 'snippet');
+      // 官方接口实际不返回 snippet（尽管文档标注 required），用长摘要前段兜底，
+      // 否则来源列表里的内容预览会是空的
+      if (r.snippet.length === 0 && r.summary.length > 0) {
+        r.snippet = r.summary.length > 180
+          ? (r.summary.substring(0, 180).replace(/\s+/g, ' ') + '…')
+          : r.summary.replace(/\s+/g, ' ');
+      }
+      const site: string = SearchService.pick(o, 'site_name');
+      r.site = site.length > 0 ? site : SearchService.hostOf(r.url);
+      r.rerankScore = SearchService.pickNum(o, 'rerank_score', 0);
+      r.authority = SearchService.pickNum(o, 'authority', -1);
+      r.publishedAt = SearchService.pick(o, 'date');
+      if (r.url.length > 0) {
+        out.push(r);
+      }
+    }
+    return out;
   }
 
   /* ------------------------- Bing RSS ------------------------- */
@@ -502,8 +600,13 @@ export class SearchService {
       const r: SearchResult = results[i];
       parts.push('[' + (i + 1).toString() + '] ' + r.title);
       parts.push('    来源：' + r.site + '  ' + r.url);
-      if (r.snippet.length > 0) {
-        parts.push('    摘要：' + r.snippet);
+      // DeepSeek 官方搜索会给 600–800 字长摘要，信息量远超短摘要，优先使用
+      const body: string = r.summary.length > 0 ? r.summary : r.snippet;
+      if (body.length > 0) {
+        parts.push('    摘要：' + body);
+      }
+      if (r.publishedAt.length > 0) {
+        parts.push('    发布：' + r.publishedAt.substring(0, 10));
       }
     }
     parts.push('');

@@ -1,4 +1,5 @@
 import { Logger } from '../common/Logger';
+import { HeaderMap, HttpClient } from '../net/HttpClient';
 
 /** 工具定义 */
 export class ToolDef {
@@ -14,11 +15,36 @@ export class ToolDef {
 }
 
 /**
- * 内置工具（本地执行，用于演示与验证 Function Calling 全链路）
+ * 内置工具。
+ *
+ * 大部分是纯本地计算；`fetch_url` 走 DeepSeek 官方 Fetch API
+ * （POST /v1/tools/fetch，$0.75/1000 次），需要 API Key。
+ * 由于存在网络工具，`execute` 是异步的。
  */
 export class Tools {
+  /** DeepSeek 凭据：由 Index 在每轮工具调用前注入 */
+  private static apiKey: string = '';
+  private static baseUrl: string = 'https://api.deepseek.com';
+  /** 单次抓取注入模型的正文上限，避免撑爆上下文 */
+  private static readonly FETCH_MAX_CHARS: number = 16000;
+
+  static setCredentials(apiKey: string, baseUrl: string): void {
+    Tools.apiKey = apiKey;
+    Tools.baseUrl = baseUrl.length > 0 ? baseUrl : 'https://api.deepseek.com';
+  }
+
+  static hasCredentials(): boolean {
+    return Tools.apiKey.trim().length > 0;
+  }
+
   static definitions(): ToolDef[] {
     const out: ToolDef[] = [];
+    // 联网抓取依赖 DeepSeek Key，没有 Key 就不暴露给模型，避免必然失败的工具调用
+    if (Tools.hasCredentials()) {
+      out.push(new ToolDef('fetch_url',
+        '抓取指定网页并返回其标题与 Markdown 正文。当用户给你一个链接、或你需要阅读搜索结果全文时使用。',
+        '{"type":"object","properties":{"url":{"type":"string","description":"要抓取的 HTTP/HTTPS 链接"}},"required":["url"],"additionalProperties":false}'));
+    }
     out.push(new ToolDef('get_current_time', '获取当前的日期与时间，可指定时区偏移（小时）。',
       '{"type":"object","properties":{"timezone_offset":{"type":"number","description":"相对 UTC 的时区偏移小时数，例如北京时间为 8"}},"required":[],"additionalProperties":false}'));
     out.push(new ToolDef('calculate', '计算一个数学表达式，支持 + - * / % ^ 与括号，以及 sqrt/abs/round/floor/ceil/log/ln/sin/cos/tan 等函数。',
@@ -41,10 +67,13 @@ export class Tools {
   }
 
   /** 执行工具，返回结果字符串 */
-  static execute(name: string, argsJson: string): string {
+  static async execute(name: string, argsJson: string): Promise<string> {
     try {
       const args: Record<string, Object> = argsJson.trim().length > 0
         ? JSON.parse(argsJson) as Record<string, Object> : {};
+      if (name === 'fetch_url') {
+        return await Tools.fetchUrl(args);
+      }
       if (name === 'get_current_time') {
         return Tools.getCurrentTime(args);
       }
@@ -114,6 +143,46 @@ export class Tools {
     }
     const v: number = min + Math.floor(Math.random() * (max - min + 1));
     return '{"min":' + min + ',"max":' + max + ',"value":' + v + '}';
+  }
+
+  /** DeepSeek 官方 Fetch API：把一个网页转成 Markdown 正文 */
+  private static async fetchUrl(args: Record<string, Object>): Promise<string> {
+    const url: string = Tools.str(args, 'url').trim();
+    if (url.length === 0) {
+      return '{"error":"url 不能为空"}';
+    }
+    if (!/^https?:\/\//i.test(url)) {
+      return '{"error":"只支持 http/https 链接"}';
+    }
+    if (!Tools.hasCredentials()) {
+      return '{"error":"未配置 DeepSeek API Key，无法抓取网页"}';
+    }
+    const base: string = Tools.baseUrl.replace(/\/+$/, '');
+    const headers: HeaderMap = {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + Tools.apiKey
+    };
+    const reqBody: Record<string, string> = {};
+    reqBody['url'] = url;
+    const raw: string = await HttpClient.postJson(base + '/v1/tools/fetch', headers, JSON.stringify(reqBody));
+    const obj: Record<string, Object> = JSON.parse(raw) as Record<string, Object>;
+    const title: string = obj['title'] === undefined || obj['title'] === null ? '' : String(obj['title']);
+    let content: string = obj['content'] === undefined || obj['content'] === null ? '' : String(obj['content']);
+    let truncated: boolean = false;
+    if (content.length > Tools.FETCH_MAX_CHARS) {
+      content = content.substring(0, Tools.FETCH_MAX_CHARS);
+      truncated = true;
+    }
+    Logger.info('fetch ok: ' + url.slice(0, 60) + ' (' + content.length + ' chars'
+      + (truncated ? ', truncated' : '') + ')');
+    const out: Record<string, Object> = {};
+    out['url'] = url;
+    out['title'] = title;
+    out['content'] = content;
+    if (truncated) {
+      out['truncated'] = true;
+    }
+    return JSON.stringify(out);
   }
 
   private static textStats(args: Record<string, Object>): string {

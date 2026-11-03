@@ -389,12 +389,17 @@ export struct SettingsPage {
 
       Column({ space: 6 }) {
         Row() {
-          this.rowLabel('搜索后端', '「自动」会记住各后端的成败与耗时，优先用最快可用的那个')
+          this.rowLabel('搜索后端', '「自动」优先用 DeepSeek 官方搜索（需 API Key），失败再降级到免密钥后端')
+        }
+        .width('100%')
+        // 五个后端分两行排，避免窄屏溢出（Row 不支持 flexWrap）
+        Row({ space: 6 }) {
+          this.backendChip('自动', 'auto')
+          this.backendChip('DeepSeek', 'deepseek')
+          this.backendChip('Bing', 'bing')
         }
         .width('100%')
         Row({ space: 6 }) {
-          this.backendChip('自动', 'auto')
-          this.backendChip('Bing', 'bing')
           this.backendChip('DuckDuckGo', 'duckduckgo')
           this.backendChip('SearXNG', 'searxng')
         }
@@ -403,6 +408,14 @@ export struct SettingsPage {
       }
       .width('100%')
       .alignItems(HorizontalAlign.Start)
+
+      if (this.settings.webSearchBackend === 'deepseek') {
+        Text('使用 DeepSeek 官方搜索 API（/v1/tools/search），按每次请求计费 $0.75/1000 次。'
+          + '需先在「服务商与 API Key」里配置 DeepSeek 的 Key。')
+          .fontSize(Font.xs)
+          .fontColor(this.pal().textTertiary)
+          .width('100%')
+      }
 
       if (this.settings.webSearchBackend === 'searxng') {
         Column({ space: 6 }) {
@@ -862,6 +875,7 @@ export struct SettingsPage {
         this.infoRow('运行平台', 'HarmonyOS 6.1.1 (API 24)');
         this.infoRow('支持协议', 'Chat Completions · Responses · Anthropic Messages · FIM');
         this.infoRow('支持服务商', 'DeepSeek · OpenAI · 任意兼容端点');
+        this.infoRow('内置模型', 'deepseek-flash (V4.1-Flash-1017) · deepseek-v4-pro');
         // 开源标记
         Row({ space: 6 }) {
           Image($r('app.media.ic_shield')).width(13).height(13).fillColor(this.pal().success)

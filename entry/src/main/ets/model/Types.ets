@@ -243,14 +243,23 @@ export class AppSettings {
 export class SearchResult {
   title: string = '';
   url: string = '';
+  /** 短摘要（约 100–200 字），用于来源列表展示 */
   snippet: string = '';
   /** 来源站点，用于展示 */
   site: string = '';
+  /** 长摘要（约 600–800 字），用于注入模型上下文；DeepSeek 官方搜索提供 */
+  summary: string = '';
+  /** 相关性分数 0–3，≥1.5 视为高质量；DeepSeek 官方搜索提供 */
+  rerankScore: number = 0;
+  /** 权威度 0–4（-1 未知），≥3 视为高权威来源；DeepSeek 官方搜索提供 */
+  authority: number = -1;
+  /** 发布时间 RFC3339；空表示未知 */
+  publishedAt: string = '';
 }
 
 /** 联网搜索配置 */
 export class SearchConfig {
-  /** auto | bing | duckduckgo | searxng */
+  /** auto | deepseek | bing | duckduckgo | searxng */
   backend: string = 'auto';
   /** searxng 实例地址 */
   endpoint: string = '';
@@ -258,6 +267,10 @@ export class SearchConfig {
   maxResults: number = 5;
   /** 地区（Bing mkt） */
   region: string = 'zh-CN';
+  /** DeepSeek 官方搜索所需：API Key（为空则不启用该后端） */
+  apiKey: string = '';
+  /** DeepSeek API 基址 */
+  baseUrl: string = 'https://api.deepseek.com';
 }
 
 /** 搜索后端健康度（进程内记忆，用于自动择优） */

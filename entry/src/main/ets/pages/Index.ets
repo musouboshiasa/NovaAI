@@ -15,6 +15,7 @@ import { ChatEngine } from '../service/ChatEngine';
 import { ImagePicker } from '../service/ImagePicker';
 import { SpeechService, AsrHandlers, TtsHandlers } from '../service/SpeechService';
 import { SearchService } from '../service/SearchService';
+import { Tools } from '../service/Tools';
 import { StreamSink } from '../provider/BaseProvider';
 import { AbortHandle } from '../net/HttpClient';
 import { ProviderFactory } from '../provider/ProviderFactory';
@@ -479,9 +480,26 @@ struct Index {
     return p;
   }
 
+  /** 找到已配置 Key 的 DeepSeek 服务商（官方搜索 / 抓取都用它鉴权） */
+  private deepseekProvider(): ProviderConfig | null {
+    const list: ProviderConfig[] = this.settings.providers;
+    for (let i = 0; i < list.length; i++) {
+      if (list[i].flavor === 'deepseek' && list[i].apiKey.trim().length > 0) {
+        return list[i];
+      }
+    }
+    return null;
+  }
+
   /** 组装搜索配置（地区跟随界面语言） */
   private searchConfig(): SearchConfig {
     const c: SearchConfig = new SearchConfig();
+    // DeepSeek 官方搜索需要 Key；没有 Key 时该后端会被自动排除
+    const ds: ProviderConfig | null = this.deepseekProvider();
+    if (ds !== null) {
+      c.apiKey = ds.apiKey;
+      c.baseUrl = ds.baseUrl.length > 0 ? ds.baseUrl : 'https://api.deepseek.com';
+    }
     c.backend = this.settings.webSearchBackend;
     c.endpoint = this.settings.webSearchEndpoint;
     c.maxResults = this.settings.webSearchMax;
@@ -491,7 +509,7 @@ struct Index {
     return c;
   }
 
-  /** 依次测试三个搜索后端，结果展示在设置页 */
+  /** 依次测试全部搜索后端，结果展示在设置页 */
   private async runSearchTest(): Promise<void> {
     if (this.searchTesting) {
       return;
@@ -667,7 +685,11 @@ struct Index {
     this.startFlush();
     this.handle = ChatEngine.run(ctx, sink, {
       onDone: (s: StreamSink) => {
-        this.finishRun(s);
+        // finishRun 需要 await 工具执行（fetch_url 会联网），错误在此兜住
+        this.finishRun(s).catch((e: Error) => {
+          Logger.warn('finishRun failed: ' + e.message);
+          this.failRun(e.message);
+        });
       },
       onFail: (m: string) => {
         this.failRun(m);
@@ -710,7 +732,7 @@ struct Index {
     }
   }
 
-  private finishRun(s: StreamSink): void {
+  private async finishRun(s: StreamSink): Promise<void> {
     this.stopFlush();
     this.flushBuffers();
     const a: ChatMessage | null = this.currentAssistant;
@@ -743,7 +765,11 @@ struct Index {
         const tc: ToolCall = s.toolCalls[i];
         toolSteps.push(this.newStep('tool', '调用 ' + tc.name, Utils.summarizeArgs(tc.arguments)));
       }
-      a.toolCalls = ChatEngine.executeTools(s.toolCalls);
+      // 工具可能联网（fetch_url），需要先把 DeepSeek 凭据交给工具层
+      const ds: ProviderConfig | null = this.deepseekProvider();
+      Tools.setCredentials(ds !== null ? ds.apiKey : '',
+        ds !== null && ds.baseUrl.length > 0 ? ds.baseUrl : 'https://api.deepseek.com');
+      a.toolCalls = await ChatEngine.executeTools(s.toolCalls);
       for (let i = 0; i < toolSteps.length; i++) {
         const r: string = i < a.toolCalls.length ? a.toolCalls[i].result : '';
         this.closeStep(toolSteps[i], r, true);

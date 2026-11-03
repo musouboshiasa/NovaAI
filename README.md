@@ -5,7 +5,7 @@
 
 <p>
   <img alt="license" src="https://img.shields.io/badge/license-MIT-blue.svg">
-  <img alt="platform" src="https://img.shields.io/badge/platform-HarmonyOS%206.1.1%20(API%2024)-green.svg">
+  <img alt="platform" src="https://img.shields.io/badge/platform-HarmonyOS%20API%2024%2B-green.svg">
   <img alt="language" src="https://img.shields.io/badge/language-ArkTS-orange.svg">
 </p>
 
@@ -27,6 +27,7 @@
 
 | 能力 | 说明 |
 | --- | --- |
+| 模型 | `deepseek-flash`（V4.1-Flash-1017，原生多模态）· `deepseek-v4-pro` |
 | 协议 | OpenAI Chat Completions · OpenAI/DeepSeek Responses · Anthropic Messages |
 | FIM 补全 | DeepSeek `/beta/completions`，支持 Chat Prefix Completion |
 | 服务商 | DeepSeek / OpenAI 内置预设，也可添加任意兼容端点 |
@@ -47,6 +48,7 @@
 
 | 能力 | 说明 |
 | --- | --- |
+| **DeepSeek 官方搜索** | 走 `/v1/tools/search`，官方自研搜索引擎，自带相关性分数与权威度，**自动模式下优先使用** |
 | 免密钥后端 | Bing RSS · DuckDuckGo · SearXNG（自建） |
 | **自动择优** | 记忆各后端成败与耗时，按「已知可用（快→慢）→ 未测过 → 失败冷却中」排序 |
 | 记忆持久化 | 健康度落盘，重启后第一次搜索即可直接择优；超过 2 小时视为过期 |
@@ -54,6 +56,7 @@
 | 连通性测试 | 设置页「测试搜索」逐后端实打实请求，给出条数 / 耗时 / 首条标题 |
 | 结果注入 | 搜索结果作为上下文交给模型，答案带 `[n]` 引用 |
 | 来源列表 | 每条带 2 行摘要，可直接判断是否值得点开 |
+| **网页抓取** | `fetch_url` 内置工具走 `/v1/tools/fetch`，把任意链接转成 Markdown 交给模型阅读 |
 
 ### 离线语音
 
@@ -95,8 +98,8 @@
 
 环境要求：
 
-- DevEco Studio **6.1.1** 及以上
-- HarmonyOS SDK **API 24**（6.1.1）
+- DevEco Studio **26.0.0** 及以上（内置 SDK API 26）
+- 兼容 HarmonyOS **API 24** 及以上设备
 
 ```powershell
 # Windows
